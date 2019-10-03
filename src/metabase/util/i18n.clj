@@ -6,7 +6,8 @@
             [potemkin.types :as p.types]
             [puppetlabs.i18n.core :as i18n :refer [available-locales]]
             [schema.core :as s])
-  (:import java.util.Locale))
+  (:import java.text.MessageFormat
+           java.util.Locale))
 
 (defn available-locales-with-names
   "Returns all locale abbreviations and their full names"
@@ -70,12 +71,23 @@
   "Schema for user and system localized string instances"
   (s/cond-pre UserLocalizedString SystemLocalizedString))
 
+(defn- validate-number-of-args
+  "Make sure the right number of args were passed to `trs`/`tru` and related forms during macro expansion."
+  [^String msg, args]
+  (let [message-format    (MessageFormat. msg)
+        expected-num-args (count (.getFormats message-format))
+        actual-num-args   (count args)]
+    (assert (= expected-num-args actual-num-args)
+      (format "(tru/trs \"%s\") expects %d args, got %d. Did you forget to escape a single quote?"
+              (.toPattern message-format) expected-num-args actual-num-args))))
+
 (defmacro deferred-tru
   "Similar to `puppetlabs.i18n.core/tru` but creates a `UserLocalizedString` instance so that conversion to the
   correct locale can be delayed until it is needed. The user locale comes from the browser, so conversion to the
   localized string needs to be 'late bound' and only occur when the user's locale is in scope. Calling `str` on the
   results of this invocation will lookup the translated version of the string."
   [msg & args]
+  (validate-number-of-args msg args)
   `(UserLocalizedString. ~(namespace-munge *ns*) ~msg ~(vec args)))
 
 (defmacro deferred-trs
@@ -84,6 +96,7 @@
   overridden/changed by a setting. Calling `str` on the results of this invocation will lookup the translated version
   of the string."
   [msg & args]
+  (validate-number-of-args msg args)
   `(SystemLocalizedString. ~(namespace-munge *ns*) ~msg ~(vec args)))
 
 (def ^String str*
